@@ -1,0 +1,203 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+
+<title>EBE Universal Document Extractor</title>
+
+<link rel="stylesheet" href="style.css">
+
+</head>
+
+<body>
+
+<div class="container">
+
+<div class="hero">
+
+<div class="logo">📄</div>
+
+<h1>EBE Universal Document Extractor</h1>
+
+<p>AI Powered Invoice Parser</p>
+
+</div>
+
+
+<div id="dropZone">
+
+<div class="uploadIcon">☁️</div>
+
+<h2>Drag & Drop PDF Here</h2>
+
+<p>or click to browse</p>
+
+<input
+type="file"
+id="fileInput"
+hidden
+accept=".pdf,image/*">
+
+</div>
+
+
+
+<div class="buttonGroup">
+
+<button id="extractBtn">
+
+Extract Text
+
+</button>
+
+<button id="copyBtn">
+
+Copy to Excel
+
+</button>
+
+<button id="clearBtn">
+
+Clear
+
+</button>
+
+</div>
+
+
+
+<div class="infoCard">
+
+<h3>Invoice Information</h3>
+
+<table id="invoiceTable">
+
+<tr>
+
+<td>State</td>
+
+<td id="state"></td>
+
+</tr>
+
+<tr>
+
+<td>School</td>
+
+<td id="school"></td>
+
+</tr>
+
+<tr>
+
+<td>Balance Due</td>
+
+<td id="balanceDue"></td>
+
+</tr>
+
+<tr>
+
+<td>PO Number</td>
+
+<td id="poNumber"></td>
+
+</tr>
+
+<tr>
+
+<td>Invoice Number</td>
+
+<td id="invoiceNo"></td>
+
+</tr>
+
+<tr>
+
+<td>PO Paid</td>
+
+<td id="poPaid"></td>
+
+</tr>
+
+<tr>
+
+<td>Invoice Date</td>
+
+<td id="invoiceDate"></td>
+
+</tr>
+
+<tr>
+
+<td>Invoice Amount</td>
+
+<td id="invoiceAmount"></td>
+
+</tr>
+
+<tr>
+
+<td>Due Date</td>
+
+<td id="dueDate"></td>
+
+</tr>
+
+</table>
+
+</div>
+
+
+
+<div class="previewArea">
+
+<div class="card">
+
+<h3>PDF Preview</h3>
+
+<canvas id="pdfPreview"></canvas>
+
+<img id="imagePreview">
+
+</div>
+
+
+<div class="card">
+
+<h3>Extracted Text</h3>
+
+<textarea
+id="output"
+placeholder="Extracted text here...">
+
+</textarea>
+
+</div>
+
+</div>
+
+
+</div>
+
+
+
+<script src="https://unpkg.com/pdfjs-dist@3.11.174/build/pdf.min.js"></script>
+
+<script>
+
+pdfjsLib.GlobalWorkerOptions.workerSrc =
+
+"https://unpkg.com/pdfjs-dist@3.11.174/build/pdf.worker.min.js";
+
+</script>
+
+
+<script src="script.js"></script>
+
+</body>
+
+</html>
