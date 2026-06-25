@@ -10,7 +10,7 @@ python3 -m http.server 8001
 
 Then open `http://localhost:8001/`.
 
-PDF.js is vendored in `vendor/`, so PDF preview and extraction work without a runtime CDN request.
+The pinned PDF.js runtime is embedded in the static page, so PDF preview and extraction work without a runtime CDN request.
 
 ## Test
 
