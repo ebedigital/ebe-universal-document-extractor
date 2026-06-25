@@ -21,14 +21,29 @@ const fields = {
 
 let currentFile = null;
 let currentObjectUrl = null;
+let hasExtractedInvoice = false;
 
 function setStatus(message) {
   output.value = message;
 }
 
+function isPdfJsReady() {
+  return Boolean(window.pdfjsLib?.getDocument);
+}
+
+function updateActions() {
+  extractBtn.disabled = !currentFile || !isPdf(currentFile);
+  copyBtn.disabled = !hasExtractedInvoice;
+}
+
 function setBusy(isBusy) {
-  extractBtn.disabled = isBusy;
-  copyBtn.disabled = isBusy;
+  if (isBusy) {
+    extractBtn.disabled = true;
+    copyBtn.disabled = true;
+  } else {
+    updateActions();
+  }
+
   extractBtn.textContent = isBusy ? "Extracting..." : "Extract Text";
 }
 
@@ -45,6 +60,9 @@ function clearInvoiceFields() {
   Object.values(fields).forEach((field) => {
     field.textContent = "";
   });
+
+  hasExtractedInvoice = false;
+  updateActions();
 }
 
 function resetPreview() {
@@ -69,6 +87,7 @@ function clearAll() {
   output.value = "";
   clearInvoiceFields();
   resetPreview();
+  updateActions();
 }
 
 function isPdf(file) {
@@ -93,32 +112,43 @@ async function handleFile(file) {
       imagePreview.src = currentObjectUrl;
       imagePreview.hidden = false;
       setStatus("Image preview loaded. Text extraction currently supports selectable-text PDFs.");
+      updateActions();
       return;
     }
 
     if (isPdf(file)) {
+      if (!isPdfJsReady()) {
+        currentFile = null;
+        setStatus("PDF support could not load. Check your connection and refresh the page.");
+        updateActions();
+        return;
+      }
+
       pdfPreview.hidden = false;
       setStatus("PDF loaded. Click Extract Text to parse the document.");
       await previewPDF(file);
+      updateActions();
       return;
     }
 
     currentFile = null;
     setStatus("Unsupported file type. Please choose a PDF or image file.");
+    updateActions();
   } catch (error) {
     currentFile = null;
     resetPreview();
     setStatus(`Could not load file: ${error.message}`);
+    updateActions();
   }
 }
 
 async function previewPDF(file) {
   const arrayBuffer = await file.arrayBuffer();
-  const pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
+  const pdf = await window.pdfjsLib.getDocument({ data: arrayBuffer }).promise;
   const page = await pdf.getPage(1);
-  const containerWidth = pdfPreview.parentElement.clientWidth - 40;
+  const containerWidth = Math.max(280, pdfPreview.parentElement.clientWidth - 40);
   const baseViewport = page.getViewport({ scale: 1 });
-  const scale = Math.min(1.5, containerWidth / baseViewport.width);
+  const scale = Math.min(1.5, Math.max(0.5, containerWidth / baseViewport.width));
   const viewport = page.getViewport({ scale });
 
   pdfPreview.height = viewport.height;
@@ -132,7 +162,7 @@ async function previewPDF(file) {
 
 async function extractPdfText(file) {
   const arrayBuffer = await file.arrayBuffer();
-  const pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
+  const pdf = await window.pdfjsLib.getDocument({ data: arrayBuffer }).promise;
   const pages = [];
 
   for (let i = 1; i <= pdf.numPages; i += 1) {
@@ -146,7 +176,7 @@ async function extractPdfText(file) {
 
 function getFirstMatch(text, regex, group = 0) {
   const match = text.match(regex);
-  return match ? match[group].trim() : "";
+  return match?.[group] ? match[group].trim() : "";
 }
 
 function parseInvoice(text) {
@@ -176,6 +206,50 @@ function parseInvoice(text) {
 
     fields.school.textContent = school || "";
   }
+
+  hasExtractedInvoice = Boolean(text.trim());
+  updateActions();
+}
+
+function getExcelRow() {
+  return [
+    fields.state.textContent,
+    fields.school.textContent,
+    "",
+    "",
+    fields.invoiceAmount.textContent,
+    "Pending Payment",
+    "",
+    "",
+    "",
+    "",
+    fields.poNumber.textContent,
+    fields.invoiceNo.textContent,
+    fields.invoiceDate.textContent,
+    fields.poPaid.textContent
+  ].join("\t");
+}
+
+async function copyText(text) {
+  if (navigator.clipboard?.writeText) {
+    await navigator.clipboard.writeText(text);
+    return;
+  }
+
+  output.focus();
+  output.select();
+  const previousValue = output.value;
+  output.value = text;
+  output.select();
+
+  try {
+    if (!document.execCommand("copy")) {
+      throw new Error("Clipboard copy was blocked.");
+    }
+  } finally {
+    output.value = previousValue;
+    output.setSelectionRange(output.value.length, output.value.length);
+  }
 }
 
 fileInput.addEventListener("change", (event) => {
@@ -184,6 +258,13 @@ fileInput.addEventListener("change", (event) => {
 
 dropZone.addEventListener("click", () => {
   fileInput.click();
+});
+
+dropZone.addEventListener("keydown", (event) => {
+  if (event.key === "Enter" || event.key === " ") {
+    event.preventDefault();
+    fileInput.click();
+  }
 });
 
 dropZone.addEventListener("dragover", (event) => {
@@ -207,6 +288,11 @@ extractBtn.addEventListener("click", async () => {
     return;
   }
 
+  if (!isPdfJsReady()) {
+    setStatus("PDF support could not load. Check your connection and refresh the page.");
+    return;
+  }
+
   if (!isPdf(currentFile)) {
     setStatus("Text extraction currently supports selectable-text PDFs. Image OCR is not enabled in this project.");
     return;
@@ -226,25 +312,15 @@ extractBtn.addEventListener("click", async () => {
 });
 
 copyBtn.addEventListener("click", async () => {
-  const row = [
-    fields.state.textContent,
-    fields.school.textContent,
-    "",
-    "",
-    fields.invoiceAmount.textContent,
-    "Pending Payment",
-    "",
-    "",
-    "",
-    "",
-    fields.poNumber.textContent,
-    fields.invoiceNo.textContent,
-    fields.invoiceDate.textContent,
-    fields.poPaid.textContent
-  ].join("\t");
+  if (!hasExtractedInvoice) {
+    setStatus("Extract invoice text before copying to Excel.");
+    return;
+  }
+
+  const row = getExcelRow();
 
   try {
-    await navigator.clipboard.writeText(row);
+    await copyText(row);
     showCopyFeedback("Copied");
   } catch (error) {
     setStatus(`Could not copy to clipboard. Row:\n${row}`);
@@ -252,3 +328,4 @@ copyBtn.addEventListener("click", async () => {
 });
 
 clearBtn.addEventListener("click", clearAll);
+updateActions();
