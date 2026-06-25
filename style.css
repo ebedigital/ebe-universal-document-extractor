@@ -127,6 +127,14 @@ border-color:#22c55e;
 
 }
 
+#dropZone.dragover{
+
+background:#1e293b;
+
+border-color:#22c55e;
+
+}
+
 
 .uploadIcon{
 
@@ -212,6 +220,16 @@ background:#ef4444;
 button:hover{
 
 transform:translateY(-3px);
+
+}
+
+button:disabled{
+
+opacity:.65;
+
+cursor:not-allowed;
+
+transform:none;
 
 }
 
@@ -309,6 +327,13 @@ border-radius:12px;
 
 }
 
+#pdfPreview[hidden],
+#imagePreview[hidden]{
+
+display:none;
+
+}
+
 
 textarea{
 
@@ -327,5 +352,67 @@ border:none;
 border-radius:12px;
 
 resize:none;
+
+}
+
+@media (max-width: 800px){
+
+.container{
+
+padding:20px 12px;
+
+}
+
+.hero h1{
+
+font-size:32px;
+
+}
+
+#dropZone{
+
+height:180px;
+
+border-radius:16px;
+
+}
+
+#dropZone h2{
+
+font-size:26px;
+
+text-align:center;
+
+}
+
+.buttonGroup{
+
+display:grid;
+
+grid-template-columns:1fr;
+
+gap:10px;
+
+}
+
+button{
+
+width:100%;
+
+margin:0;
+
+}
+
+.previewArea{
+
+grid-template-columns:1fr;
+
+}
+
+textarea{
+
+height:360px;
+
+}
 
 }

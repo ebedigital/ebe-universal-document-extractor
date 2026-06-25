@@ -47,23 +47,11 @@ accept=".pdf,image/*">
 
 <div class="buttonGroup">
 
-<button id="extractBtn">
+<button id="extractBtn">Extract Text</button>
 
-Extract Text
+<button id="copyBtn">Copy to Excel</button>
 
-</button>
-
-<button id="copyBtn">
-
-Copy to Excel
-
-</button>
-
-<button id="clearBtn">
-
-Clear
-
-</button>
+<button id="clearBtn">Clear</button>
 
 </div>
 
@@ -159,9 +147,9 @@ Clear
 
 <h3>PDF Preview</h3>
 
-<canvas id="pdfPreview"></canvas>
+<canvas id="pdfPreview" hidden></canvas>
 
-<img id="imagePreview">
+<img id="imagePreview" alt="Selected document preview" hidden>
 
 </div>
 
@@ -172,9 +160,7 @@ Clear
 
 <textarea
 id="output"
-placeholder="Extracted text here...">
-
-</textarea>
+placeholder="Extracted text here..."></textarea>
 
 </div>
 

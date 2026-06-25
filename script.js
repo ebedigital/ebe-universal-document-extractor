@@ -1,362 +1,254 @@
 const dropZone = document.getElementById("dropZone");
 const fileInput = document.getElementById("fileInput");
-
 const output = document.getElementById("output");
-
 const imagePreview = document.getElementById("imagePreview");
 const pdfPreview = document.getElementById("pdfPreview");
+const extractBtn = document.getElementById("extractBtn");
+const copyBtn = document.getElementById("copyBtn");
+const clearBtn = document.getElementById("clearBtn");
 
-const ctx = pdfPreview.getContext("2d");
+const fields = {
+  state: document.getElementById("state"),
+  school: document.getElementById("school"),
+  balanceDue: document.getElementById("balanceDue"),
+  poNumber: document.getElementById("poNumber"),
+  invoiceNo: document.getElementById("invoiceNo"),
+  poPaid: document.getElementById("poPaid"),
+  invoiceDate: document.getElementById("invoiceDate"),
+  invoiceAmount: document.getElementById("invoiceAmount"),
+  dueDate: document.getElementById("dueDate")
+};
 
-let currentFile;
+let currentFile = null;
+let currentObjectUrl = null;
 
-
-// =========================
-// HANDLE FILE
-// =========================
-
-function handleFile(file){
-
-currentFile = file;
-
-if(file.type.includes("image")){
-
-imagePreview.src = URL.createObjectURL(file);
-
-imagePreview.style.display = "block";
-pdfPreview.style.display = "none";
-
+function setStatus(message) {
+  output.value = message;
 }
 
-else if(file.type==="application/pdf"){
-
-imagePreview.style.display = "none";
-pdfPreview.style.display = "block";
-
-previewPDF(file);
-
+function setBusy(isBusy) {
+  extractBtn.disabled = isBusy;
+  copyBtn.disabled = isBusy;
+  extractBtn.textContent = isBusy ? "Extracting..." : "Extract Text";
 }
 
+function showCopyFeedback(message) {
+  const originalText = copyBtn.textContent;
+  copyBtn.textContent = message;
+
+  window.setTimeout(() => {
+    copyBtn.textContent = originalText;
+  }, 1600);
 }
 
+function clearInvoiceFields() {
+  Object.values(fields).forEach((field) => {
+    field.textContent = "";
+  });
+}
 
-// =========================
-// FILE INPUT
-// =========================
+function resetPreview() {
+  if (currentObjectUrl) {
+    URL.revokeObjectURL(currentObjectUrl);
+    currentObjectUrl = null;
+  }
 
-fileInput.addEventListener("change",(e)=>{
+  imagePreview.removeAttribute("src");
+  imagePreview.hidden = true;
 
-handleFile(e.target.files[0]);
+  const ctx = pdfPreview.getContext("2d");
+  ctx.clearRect(0, 0, pdfPreview.width, pdfPreview.height);
+  pdfPreview.width = 0;
+  pdfPreview.height = 0;
+  pdfPreview.hidden = true;
+}
 
+function clearAll() {
+  currentFile = null;
+  fileInput.value = "";
+  output.value = "";
+  clearInvoiceFields();
+  resetPreview();
+}
+
+function isPdf(file) {
+  return file.type === "application/pdf" || file.name.toLowerCase().endsWith(".pdf");
+}
+
+function isImage(file) {
+  return file.type.startsWith("image/");
+}
+
+async function handleFile(file) {
+  if (!file) {
+    return;
+  }
+
+  clearAll();
+  currentFile = file;
+
+  try {
+    if (isImage(file)) {
+      currentObjectUrl = URL.createObjectURL(file);
+      imagePreview.src = currentObjectUrl;
+      imagePreview.hidden = false;
+      setStatus("Image preview loaded. Text extraction currently supports selectable-text PDFs.");
+      return;
+    }
+
+    if (isPdf(file)) {
+      pdfPreview.hidden = false;
+      setStatus("PDF loaded. Click Extract Text to parse the document.");
+      await previewPDF(file);
+      return;
+    }
+
+    currentFile = null;
+    setStatus("Unsupported file type. Please choose a PDF or image file.");
+  } catch (error) {
+    currentFile = null;
+    resetPreview();
+    setStatus(`Could not load file: ${error.message}`);
+  }
+}
+
+async function previewPDF(file) {
+  const arrayBuffer = await file.arrayBuffer();
+  const pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
+  const page = await pdf.getPage(1);
+  const containerWidth = pdfPreview.parentElement.clientWidth - 40;
+  const baseViewport = page.getViewport({ scale: 1 });
+  const scale = Math.min(1.5, containerWidth / baseViewport.width);
+  const viewport = page.getViewport({ scale });
+
+  pdfPreview.height = viewport.height;
+  pdfPreview.width = viewport.width;
+
+  await page.render({
+    canvasContext: pdfPreview.getContext("2d"),
+    viewport
+  }).promise;
+}
+
+async function extractPdfText(file) {
+  const arrayBuffer = await file.arrayBuffer();
+  const pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
+  const pages = [];
+
+  for (let i = 1; i <= pdf.numPages; i += 1) {
+    const page = await pdf.getPage(i);
+    const textContent = await page.getTextContent();
+    pages.push(textContent.items.map((item) => item.str).join("\n"));
+  }
+
+  return pages.join("\n\n");
+}
+
+function getFirstMatch(text, regex, group = 0) {
+  const match = text.match(regex);
+  return match ? match[group].trim() : "";
+}
+
+function parseInvoice(text) {
+  clearInvoiceFields();
+
+  fields.invoiceNo.textContent = getFirstMatch(text, /\bINV[-\s]?\d+(?:[-\s]?\d+)?\b/i).toUpperCase();
+  fields.invoiceDate.textContent = getFirstMatch(text, /\b\d{1,2}[/-]\d{1,2}[/-]\d{2,4}\b/);
+  fields.dueDate.textContent = getFirstMatch(text, /Due Date\s*:?\s*(\d{1,2}[/-]\d{1,2}[/-]\d{2,4})/i, 1);
+
+  const balanceDue = getFirstMatch(text, /Balance Due\s*:?\s*\$?\s*([\d,]+\.\d{2})/i, 1);
+  fields.balanceDue.textContent = balanceDue;
+  fields.invoiceAmount.textContent = balanceDue || getFirstMatch(text, /Invoice Amount\s*:?\s*\$?\s*([\d,]+\.\d{2})/i, 1);
+
+  fields.poNumber.textContent = (
+    getFirstMatch(text, /\bPO(?:\s*Number|\s*#)?\s*:?\s*(POTSW\d+|\d{4,})\b/i, 1) ||
+    getFirstMatch(text, /\bPOTSW\d+\b/i)
+  ).toUpperCase();
+  fields.state.textContent = getFirstMatch(text, /\b(AL|AK|AZ|AR|CA|CO|CT|DE|FL|GA|HI|ID|IL|IN|IA|KS|KY|LA|ME|MD|MA|MI|MN|MS|MO|MT|NE|NV|NH|NJ|NM|NY|NC|ND|OH|OK|OR|PA|RI|SC|SD|TN|TX|UT|VT|VA|WA|WV|WI|WY)\b/);
+  fields.poPaid.textContent = text.trim() ? "Pending" : "";
+
+  const schoolBlock = text.match(/Bill To\s*([\s\S]*?)(?:Ship To|Invoice|Due Date|$)/i);
+  if (schoolBlock) {
+    const school = schoolBlock[1]
+      .split("\n")
+      .map((line) => line.trim())
+      .find((line) => line.length > 5 && !/^\d/.test(line));
+
+    fields.school.textContent = school || "";
+  }
+}
+
+fileInput.addEventListener("change", (event) => {
+  handleFile(event.target.files[0]);
 });
 
-
-// =========================
-// DRAG DROP
-// =========================
-
-dropZone.addEventListener("click",()=>{
-
-fileInput.click();
-
+dropZone.addEventListener("click", () => {
+  fileInput.click();
 });
 
-dropZone.addEventListener("dragover",(e)=>{
-
-e.preventDefault();
-
-dropZone.classList.add("dragover");
-
+dropZone.addEventListener("dragover", (event) => {
+  event.preventDefault();
+  dropZone.classList.add("dragover");
 });
 
-dropZone.addEventListener("dragleave",()=>{
-
-dropZone.classList.remove("dragover");
-
+dropZone.addEventListener("dragleave", () => {
+  dropZone.classList.remove("dragover");
 });
 
-dropZone.addEventListener("drop",(e)=>{
-
-e.preventDefault();
-
-dropZone.classList.remove("dragover");
-
-const file = e.dataTransfer.files[0];
-
-handleFile(file);
-
+dropZone.addEventListener("drop", (event) => {
+  event.preventDefault();
+  dropZone.classList.remove("dragover");
+  handleFile(event.dataTransfer.files[0]);
 });
 
+extractBtn.addEventListener("click", async () => {
+  if (!currentFile) {
+    setStatus("Choose a file first.");
+    return;
+  }
 
-// =========================
-// PDF PREVIEW
-// =========================
+  if (!isPdf(currentFile)) {
+    setStatus("Text extraction currently supports selectable-text PDFs. Image OCR is not enabled in this project.");
+    return;
+  }
 
-async function previewPDF(file){
+  setBusy(true);
 
-const arrayBuffer = await file.arrayBuffer();
-
-const pdf = await pdfjsLib.getDocument({
-
-data:arrayBuffer
-
-}).promise;
-
-const page = await pdf.getPage(1);
-
-const viewport = page.getViewport({
-
-scale:1
-
+  try {
+    const finalText = await extractPdfText(currentFile);
+    output.value = finalText || "No selectable text was found in this PDF.";
+    parseInvoice(finalText);
+  } catch (error) {
+    setStatus(`Could not extract text: ${error.message}`);
+  } finally {
+    setBusy(false);
+  }
 });
 
-pdfPreview.height = viewport.height;
+copyBtn.addEventListener("click", async () => {
+  const row = [
+    fields.state.textContent,
+    fields.school.textContent,
+    "",
+    "",
+    fields.invoiceAmount.textContent,
+    "Pending Payment",
+    "",
+    "",
+    "",
+    "",
+    fields.poNumber.textContent,
+    fields.invoiceNo.textContent,
+    fields.invoiceDate.textContent,
+    fields.poPaid.textContent
+  ].join("\t");
 
-pdfPreview.width = viewport.width;
-
-await page.render({
-
-canvasContext:ctx,
-
-viewport
-
-}).promise;
-
-}
-
-
-// =========================
-// EXTRACT BUTTON
-// =========================
-
-document.getElementById("extractBtn")
-
-.addEventListener("click",async()=>{
-
-
-if(!currentFile){
-
-alert("Choose file first");
-
-return;
-
-}
-
-
-const arrayBuffer = await currentFile.arrayBuffer();
-
-const pdf = await pdfjsLib.getDocument({
-
-data:arrayBuffer
-
-}).promise;
-
-
-let finalText="";
-
-
-for(let i=1;i<=pdf.numPages;i++){
-
-const page = await pdf.getPage(i);
-
-const textContent = await page.getTextContent();
-
-
-textContent.items.forEach(item=>{
-
-finalText += item.str + "\n";
-
+  try {
+    await navigator.clipboard.writeText(row);
+    showCopyFeedback("Copied");
+  } catch (error) {
+    setStatus(`Could not copy to clipboard. Row:\n${row}`);
+  }
 });
 
-}
-
-
-output.value = finalText;
-
-
-// Invoice Number
-
-const invoiceMatch =
-
-finalText.match(/INV-\d+-\d+/);
-
-if(invoiceMatch){
-
-invoiceNo.textContent = invoiceMatch[0];
-
-}
-
-
-// Invoice Date
-
-const dateMatch =
-
-finalText.match(/\d{2}-\d{2}-\d{2}/);
-
-if(dateMatch){
-
-invoiceDate.textContent = dateMatch[0];
-
-}
-
-
-// Due Date
-
-const dueDateMatch =
-
-finalText.match(/Due Date\s+(\d{2}-\d{2}-\d{2})/i);
-
-if(dueDateMatch){
-
-dueDate.textContent = dueDateMatch[1];
-
-}
-
-
-// Balance Due
-
-const amountMatch =
-
-finalText.match(/Balance Due\s+\$?([\d,]+\.\d{2})/i);
-
-if(amountMatch){
-
-balanceDue.textContent = amountMatch[1];
-
-invoiceAmount.textContent = amountMatch[1];
-
-}
-
-
-// PO Number
-
-const poMatch =
-
-finalText.match(/POTSW\d+/);
-
-if(poMatch){
-
-poNumber.textContent = poMatch[0];
-
-}
-
-
-// School
-
-const schoolMatch =
-
-finalText.match(/Bill To([\s\S]*?)Ship To/i);
-
-if(schoolMatch){
-
-const school = schoolMatch[1]
-
-.split("\n")
-
-.find(line=>line.trim().length>5);
-
-if(school){
-
-document.getElementById("school").textContent =
-
-school.trim();
-
-}
-
-}
-
-
-// State
-
-const stateMatch =
-
-finalText.match(/\b(AL|AK|AZ|AR|CA|CO|CT|DE|FL|GA|HI|ID|IL|IN|IA|KS|KY|LA|ME|MD|MA|MI|MN|MS|MO|MT|NE|NV|NH|NJ|NM|NY|NC|ND|OH|OK|OR|PA|RI|SC|SD|TN|TX|UT|VT|VA|WA|WV|WI|WY)\b/);
-
-if(stateMatch){
-
-state.textContent = stateMatch[0];
-
-}
-
-
-// PO Paid
-
-poPaid.textContent = "Pending";
-
-
-});
-
-
-document.getElementById("copyBtn")
-.addEventListener("click",()=>{
-
-const row = [
-
-document.getElementById("state")?.textContent || "",
-
-document.getElementById("school")?.textContent || "",
-
-"", // Contact Name
-
-"", // Contact Info
-
-document.getElementById("invoiceAmount")?.textContent || "",
-
-"Pending Payment",
-
-"", // Print Digital
-
-"", // PO
-
-"", // Q-Rec
-
-"", // Quote #
-
-document.getElementById("poNumber")?.textContent || "",
-
-document.getElementById("invoiceNo")?.textContent || "",
-
-document.getElementById("invoiceDate")?.textContent || "",
-
-document.getElementById("poPaid")?.textContent || ""
-
-].join("\t");
-
-
-console.log(row);
-
-navigator.clipboard.writeText(row);
-
-alert("Copied");
-
-});
-
-document.getElementById("clearBtn")
-.addEventListener("click",()=>{
-
-output.value="";
-
-pdfPreview.width=0;
-pdfPreview.height=0;
-
-imagePreview.src="";
-
-document.getElementById("state").textContent="";
-
-document.getElementById("school").textContent="";
-
-document.getElementById("balanceDue").textContent="";
-
-document.getElementById("poNumber").textContent="";
-
-document.getElementById("invoiceNo").textContent="";
-
-document.getElementById("poPaid").textContent="";
-
-document.getElementById("invoiceDate").textContent="";
-
-document.getElementById("invoiceAmount").textContent="";
-
-document.getElementById("dueDate").textContent="";
-
-});
+clearBtn.addEventListener("click", clearAll);
